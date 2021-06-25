@@ -65,7 +65,7 @@ $PoststoPost | ForEach-Object {
     try {
         New-SlackMessageAttachment @Fields |
         New-SlackMessage -Channel '@reddit-test' |
-        Send-SlackMessage -Uri https://hooks.slack.com/services/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
+        Send-SlackMessage -Uri $URI
         $obj = [pscustomobject]@{
             ID    = $_.id
             Title = $title

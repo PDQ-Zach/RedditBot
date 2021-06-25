@@ -1,5 +1,10 @@
-#Subs to get all posts from
+#Load functions
+(Get-ChildItem -Path "$PWD\Functions").FullName | ForEach-Object { . $_ }
+#Path to redditbot log
+$ENV:log = "C:\windows\Temp\RedditBotLogs\RBLog.log"
+#Store previously viewed articles
 $DataBasePath = ".\RedditBotDB.CSV"
+#Subs to get all posts from
 $Feeds = @(
     'PDQ',
     'PDQDeploy'   
@@ -10,32 +15,29 @@ $FilterFeeds = @(
 )
 #Keywords to check for in Filtered subs
 $Keywords = @(
-    'CentOS',
-    'GIGO'
+    'PDQ',
+    'PDQ.com'
 )
+
 #Create an arraylist to store data
 $FeedData = [System.Collections.ArrayList]::new()
 $PoststoPost = [System.Collections.ArrayList]::new()
+
 #Create the database if it doesn't exist
-IF (!(Test-Path -Path $DataBasePath)) { New-Item -Path $DataBasePath}
+IF (!(Test-Path -Path $DataBasePath)) { 
+    New-Item -Path $DataBasePath
+}
+#Import CSV data to check against
 $DatabaseData = Import-CSV -Path $DataBasePath
-#Make get all new posts from the unfiltered feeds
+
+#Get all new posts from the unfiltered feeds
 Foreach ($Feed in $Feeds) {
-    $FeedData = (Invoke-Restmethod -Method Get -Uri https://www.reddit.com/r/$feed/new.json).data.children.data | 
-    Select-Object id, URL, title, selftext
+    $FeedData += Get-RedditPosts -SubName $feed | Select-Object id, URL, title, selftext, subreddit
 }
 
-Foreach ($Feed in $FilterFeeds) {
-    $FilteredFeedData = (Invoke-Restmethod -Method Get -Uri https://www.reddit.com/r/$FilterFeeds/new.json).data.children.data | 
-    Select-Object id, URL, title, selftext
-}
-
-Foreach ($keyword in $keywords) {
-    $FilteredFeedData| Foreach-Object {
-        if ($_.title -match $keyword -or $_.selftest -match $keyword) {
-            $FeedData += $_
-        }
-    }
+#Get all posts from filtered feeds
+Foreach ($Filfeed in $FilterFeeds) {
+    $FeedData += Get-RedditPosts -SubName $Filfeed -IncludeKeywords $Keywords | Select-Object id, URL, title, selftext, subreddit
 }
 
 Foreach ($feed in $FeedData) {
@@ -43,3 +45,39 @@ Foreach ($feed in $FeedData) {
         $Null = $PoststoPost.Add($feed)
     }
 }
+If ($PoststoPost.Count -lt 1) {
+    Write-Log "There are no new Reddit posts"
+    exit 0
+}
+
+$PoststoPost | ForEach-Object {
+    $Title = $_.Title -replace [char]8220 -replace [char]8221
+    $Text = $_.selftext -replace [char]8220 -replace [char]8221
+    $Fields = @{
+        Title     = $Title
+        TitleLink = $_.url
+        Text      = Get-AbbreviatedString -text $text -WordCount 25
+        Pretext   = "New Post from r/$($_.subreddit)"
+        Color     = $([System.Drawing.Color]::Blue) 
+        Fallback  = "New Reddit Post: " + $Title
+    }
+        
+    try {
+        New-SlackMessageAttachment @Fields |
+        New-SlackMessage -Channel '@reddit-test' |
+        Send-SlackMessage -Uri https://hooks.slack.com/services/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
+        $obj = [pscustomobject]@{
+            ID    = $_.id
+            Title = $title
+        } 
+        $obj | Export-Csv -Path $DataBasePath -Append -NoTypeInformation
+    }
+    catch {
+        "Unable to complete post or add to CSV action.  Please validate and try again" 
+    }
+    Start-Sleep 1
+}
+
+
+
+

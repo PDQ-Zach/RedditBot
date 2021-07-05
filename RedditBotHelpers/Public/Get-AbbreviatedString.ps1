@@ -4,9 +4,9 @@ function Get-AbbreviatedString{
         [string]$text,
         [int]$WordCount
     )
-        Write-Log "Starting Get-AbbreviatedString"
+        Write-Host "Starting Get-AbbreviatedString"
         $SplitString = $text -split " " | Select-Object -First $WordCount
         return ($SplitString -join " ") + "..."
-        Write-Log "Get-AbbreviatedString complete"
+        Write-Host "Get-AbbreviatedString complete"
    
 }

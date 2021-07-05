@@ -1,9 +1,27 @@
 #Load functions
 (Get-ChildItem -Path "$PWD\Functions").FullName | ForEach-Object { . $_ }
-#Path to redditbot log
-$ENV:log = "C:\windows\Temp\RedditBotLogs\RBLog.log"
+#Set variables
+$resourceGroupName = $env:FUNC_STOR_RGName
+$storageAccountName = $env:FUNC_STOR_ActName
+$tableName = $env:FUNC_STOR_TblName
+$URI = $env:Slack_URI
 #Store previously viewed articles
-$DataBasePath = ".\RedditBotDB.CSV"
+try {
+    $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName `
+        -Name $storageAccountName
+    $storageContext = $storageAccount.Context
+    $cloudTable = (Get-AzStorageTable –Name $tableName –Context $storageContext).CloudTable
+
+    #Read the items for the sessionID
+    $records = Get-AzTableRow `
+                -table $cloudTable `
+                -PartitionKey "Partition1"
+}
+catch {
+    Write-Error "Failure connecting to table for state data, $_"
+    exit
+}
+
 #Subs to get all posts from
 $Feeds = @(
     'PDQ',
@@ -11,7 +29,9 @@ $Feeds = @(
 )
 #Subs to get filtered posts from
 $FilterFeeds = @(
-    'SysAdmin' 
+    'SysAdmin',
+    'Powershell',
+    'k12sysadmin' 
 )
 #Keywords to check for in Filtered subs
 $Keywords = @(
@@ -22,13 +42,6 @@ $Keywords = @(
 #Create an arraylist to store data
 $FeedData = [System.Collections.ArrayList]::new()
 $PoststoPost = [System.Collections.ArrayList]::new()
-
-#Create the database if it doesn't exist
-IF (!(Test-Path -Path $DataBasePath)) { 
-    New-Item -Path $DataBasePath
-}
-#Import CSV data to check against
-$DatabaseData = Import-CSV -Path $DataBasePath
 
 #Get all new posts from the unfiltered feeds
 Foreach ($Feed in $Feeds) {
@@ -41,12 +54,12 @@ Foreach ($Filfeed in $FilterFeeds) {
 }
 
 Foreach ($feed in $FeedData) {
-    If ($DatabaseData.ID -notcontains $feed.id) {
+    If ($records.rowid -notcontains $feed.id) {
         $Null = $PoststoPost.Add($feed)
     }
 }
 If ($PoststoPost.Count -lt 1) {
-    Write-Log "There are no new Reddit posts"
+    Write-Host "There are no new Reddit posts"
     exit 0
 }
 
@@ -70,10 +83,11 @@ $PoststoPost | ForEach-Object {
             ID    = $_.id
             Title = $title
         } 
-        $obj | Export-Csv -Path $DataBasePath -Append -NoTypeInformation
+        Add-AzTableRow -Table $table -property @{"Title"=$obj.title} -RowKey ($obj.ID) -PartitionKey "partition1"
+
     }
     catch {
-        "Unable to complete post or add to CSV action.  Please validate and try again" 
+        Write-Error "Unable to complete post or add to table action.  Please validate and try again" 
     }
     Start-Sleep 1
 }

@@ -1,19 +1,19 @@
-function Select-ByIncludedKeyword {
+function Select-ByExcludedKeyword {
     [CmdletBinding()]
     param (
-        [string[]]$Keywords,
+        $Keywords,
         $Posts
     )
     
     begin {
-        Write-Log "Starting Select-ByIncludedKeyword"
+        Write-Log "Starting Select-ByExcludedKeyword"
     }
     
     process {
         
         Foreach ($keyword in $keywords) {
             $Posts | Foreach-Object {
-                if ($_.title -match $keyword -or $_.selftest -match $keyword) {
+                if ($_.title -notmatch $keyword -or $_.selftest -notmatch $keyword) {
                     return $_
                 }
             }
@@ -21,6 +21,6 @@ function Select-ByIncludedKeyword {
     }
     
     end {
-        Write-Log "Select-ByIncludedKeyword complete"
+        Write-Host "Select-ByExcludedKeyword complete"
     }
 }

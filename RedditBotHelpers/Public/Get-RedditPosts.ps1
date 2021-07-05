@@ -8,7 +8,7 @@ function Get-RedditPosts {
     )
     
     begin {
-        Write-Log -Verbose "Starting Get-RedditPosts for r/$subname"
+        Write-Host "Starting Get-RedditPosts for r/$subname"
         $ReturnPosts = [Collections.Arraylist]::new()
         $Posts = [Collections.Arraylist]::new()
     }
@@ -17,7 +17,7 @@ function Get-RedditPosts {
         $Posts += $Subname | ForEach-Object { Invoke-GetRedditPosts -Subname $_ | Where-Object author -NotLike "PDQit" }
             
         If ($posts.count -gt 0) {
-            Write-Log "There are $($Posts.count) posts to check"
+            Write-Host "There are $($Posts.count) posts to check"
             if ($MyInvocation.BoundParameters.Keys.contains('IncludeKeywords')) {
                 write-host <#"working"$ReturnPosts += Select-ByIncludedKeyword -keywords $IncludeKeywords -Posts $Posts#>; break
             }
@@ -29,11 +29,11 @@ function Get-RedditPosts {
             }
         }
         else {
-            Write-Log -Level Error "No posts were returned, please try again later"
+            Write-Error "No posts were returned, please try again later"
         }
     }
     
     end {
-        Write-Log "Get-RedditPosts complete for $subname"
+        Write-Host "Get-RedditPosts complete for $subname"
     }
 }

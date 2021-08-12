@@ -1,10 +1,24 @@
-#Load functions
-(Get-ChildItem -Path "$PWD\Functions").FullName | ForEach-Object { . $_ }
+# Input bindings are passed in via param block.
+param($Timer)
+
+# Get the current universal time in the default string format.
+$currentUTCtime = (Get-Date).ToUniversalTime()
+
+# The 'IsPastDue' property is 'true' when the current function invocation is later than scheduled.
+if ($Timer.IsPastDue) {
+    Write-Host "PowerShell timer is running late!"
+}
+
+# Write an information log with the current time.
+Write-Host "PowerShell timer trigger function ran! TIME: $currentUTCtime"
+
 #Set variables
 $resourceGroupName = $env:FUNC_STOR_RGName
 $storageAccountName = $env:FUNC_STOR_ActName
 $tableName = $env:FUNC_STOR_TblName
-$URI = $env:Slack_URI
+$URI = $env:SlackURI
+$channel = $env:channel
+
 #Store previously viewed articles
 try {
     $storageAccount = Get-AzStorageAccount -ResourceGroupName $resourceGroupName `
@@ -14,8 +28,8 @@ try {
 
     #Read the items for the sessionID
     $records = Get-AzTableRow `
-                -table $cloudTable `
-                -PartitionKey "Partition1"
+        -table $cloudTable `
+        -PartitionKey "partition1"
 }
 catch {
     Write-Error "Failure connecting to table for state data, $_"
@@ -54,7 +68,7 @@ Foreach ($Filfeed in $FilterFeeds) {
 }
 
 Foreach ($feed in $FeedData) {
-    If ($records.rowid -notcontains $feed.id) {
+    If ($records.rowkey -notcontains $feed.id) {
         $Null = $PoststoPost.Add($feed)
     }
 }
@@ -77,18 +91,23 @@ $PoststoPost | ForEach-Object {
         
     try {
         New-SlackMessageAttachment @Fields |
-        New-SlackMessage -Channel '@reddit-test' |
+        New-SlackMessage -Channel $channel |
         Send-SlackMessage -Uri $URI
         $obj = [pscustomobject]@{
             ID    = $_.id
             Title = $title
-        } 
-        Add-AzTableRow -Table $table -property @{"Title"=$obj.title} -RowKey ($obj.ID) -PartitionKey "partition1"
-
+        }
+    } 
+    catch {
+        Write-Error "Unable to post to slack.  Error $_" 
+    }
+    try {
+        Add-AzTableRow -Table $cloudTable -property @{"Title" = $obj.title } -RowKey ($obj.ID) -PartitionKey "partition1"
     }
     catch {
-        Write-Error "Unable to complete post or add to table action.  Please validate and try again" 
+        Write-Error "Unable to add to Azure table.  Error $_"
     }
+    
     Start-Sleep 1
 }
 
